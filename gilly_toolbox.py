@@ -35,6 +35,32 @@ class OBJECT_OT_SelectedLinkedDuplicatesOperator(bpy.types.Operator):
             bpy.context.view_layer.objects.active = mesh_objects[0]
         
         return {'FINISHED'}
+    
+# Function to move selected objects to the chosen collection
+def move_selected_objects_to_chosen_collection(chosen_collection_name):
+    # Get the chosen collection by name
+    chosen_collection = bpy.data.collections[chosen_collection_name]
+
+    # Get selected objects
+    selected_objects = bpy.context.selected_objects
+
+    # Move selected objects to the chosen collection
+    for obj in selected_objects:
+        if obj.users_collection:
+            obj.users_collection[0].objects.unlink(obj)
+        chosen_collection.objects.link(obj)
+
+# Operator to trigger moving selected objects to the chosen collection
+class OBJECT_OT_MoveToChosenCollection(bpy.types.Operator):
+    bl_idname = "object.move_to_chosen_collection"
+    bl_label = "Move to Chosen Collection"
+    bl_description = "Move selected objects to the chosen collection in the Outliner"
+
+    collection_name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        move_selected_objects_to_chosen_collection(self.collection_name)
+        return {'FINISHED'}
 
 # Define the operator for removing custom properties
 class OBJECT_OT_RemoveCustomPropertyOperator(bpy.types.Operator):
@@ -375,10 +401,26 @@ class OBJECT_PT_GillyToolsPanel(bpy.types.Panel):
         
         #Instances Box
         row = layout.row()
-        row.label(text="Instances", icon='LINKED')
+        row.label(text="Objects & Instances", icon='OUTLINER')
         box = layout.box()
         col = box.column()
         col.operator("object.selected_linked_duplicates")
+        
+        # Function to update the collection items in the dropdown
+        box = layout.box()
+        col = box.column()
+        col.label(text="Move Selected to Collection")
+        def update_collection_items(self, context):
+            collections = bpy.context.scene.collection.children
+            col.prop(context.scene, "chosen_collection", text="", icon='GROUP')
+
+        # Dropdown menu to select the collection
+        collections = bpy.context.scene.collection.children
+        collection_items = [(col.name, col.name, '') for col in collections]
+        col.prop(context.scene, "chosen_collection", text="", icon='GROUP')
+
+        # Button to move selected objects to the chosen collection
+        col.operator("object.move_to_chosen_collection", text="Move to Collection").collection_name = context.scene.chosen_collection
         
         #Custom Properties Box
         row = layout.row()
@@ -460,6 +502,16 @@ class OBJECT_PT_GillyToolsPanel(bpy.types.Panel):
         row.operator("object.bake_particle_simulation", text="Bake Particle Simulation")
 
 
+def get_collection_items(self, context):
+    collections = bpy.context.scene.collection.children
+    return [(col.name, col.name, '') for col in collections]
+
+# Property to store the chosen collection name
+bpy.types.Scene.chosen_collection = bpy.props.EnumProperty(
+    items=get_collection_items,
+    name="Chosen Collection"
+)
+
 # Registration and unregistering of operators and panels
 def register():
     bpy.utils.register_class(OBJECT_OT_SelectedLinkedDuplicatesOperator)
@@ -483,6 +535,7 @@ def register():
     bpy.utils.register_class(SetCurveResolutionSettings)
     bpy.utils.register_class(OBJECT_OT_SetCurveResolutionOperator)
     bpy.types.Scene.set_curve_resolution_settings = bpy.props.PointerProperty(type=SetCurveResolutionSettings)
+    bpy.utils.register_class(OBJECT_OT_MoveToChosenCollection)
 
 def unregister():
     bpy.utils.unregister_class(OBJECT_OT_SelectedLinkedDuplicatesOperator)
@@ -506,6 +559,19 @@ def unregister():
     bpy.utils.unregister_class(SetCurveResolutionSettings)
     bpy.utils.unregister_class(OBJECT_OT_SetCurveResolutionOperator)
     del bpy.types.Scene.set_curve_resolution_settings
+    bpy.utils.unregister_class(OBJECT_OT_MoveToChosenCollection)
+    del bpy.types.Scene.chosen_collection
+    
+# Handler to update the collection items in the dropdown when collections change
+def update_dropdown_collections(self, context):
+    collections = bpy.context.scene.collection.children
+    bpy.types.Scene.chosen_collection = bpy.props.EnumProperty(
+        items=[(col.name, col.name, '') for col in collections],
+        name="Chosen Collection"
+    )
+
+# Add the handler to listen for changes in collections
+bpy.app.handlers.depsgraph_update_post.append(update_dropdown_collections)
 
 # Checking if the script is being run directly from Blender
 if __name__ == "__main__":
